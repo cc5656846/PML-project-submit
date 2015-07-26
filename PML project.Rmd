@@ -1,0 +1,91 @@
+---
+title: "PML project: Activity Classification"
+date: "Sunday, July 26, 2015"
+---
+
+#### Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+The objective of this project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. and predict the manner in which they did the exercise.
+
+### Load packages and set path
+
+```{r , echo=T, warning=FALSE}
+library(randomForest)
+library(rattle) 
+library(caret)
+library(dplyr)
+setwd('F:/Statistics/Coursera/Practical machine learning/project/')
+```
+
+### Load data
+Download the training and testing data through following linkes and read them into R.
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+Note here both 'NA' and '' are treated as missing while reading into R.
+```{r}
+train = read.csv('pml-training.csv', na.strings = c("NA", ""))
+test = read.csv('pml-testing.csv', na.strings = c("NA", ""))
+```
+
+### Data processing 
+Data processing takes three steps on the training set. At first, I separate trainging set into training and testing set by 60% and 40%. Then I expored and remove variables with a great amount of missing data. In the last step, I remove the first five varibales which don't provide much information for classification. 
+
+```{r}
+set.seed(12345)
+train.indx = createDataPartition(train$classe, p=0.6, list=FALSE)
+my.train = train[train.indx,]
+my.test = train[-train.indx,]
+
+na.list = sapply(my.train, function(x) {sum(is.na(x))})
+table(na.list)
+drop.name = names(na.list[na.list == 11543])
+my.train.1 = my.train[, !(names(train) %in% drop.name)]
+
+near.zero = nearZeroVar(my.train.1, saveMetrics=TRUE)
+drop.name = rownames(near.zero[near.zero$nzv == TRUE,])
+my.train.2 = my.train.1[, !(names(my.train.1) %in% drop.name)]
+
+my.train.final = my.train.2[,-c(1,2,3,4,5)]
+str(my.train.final)
+```
+### Results
+
+#### Algorithm 1: Decision Tree
+First machine learning algorithm I tried was decision tree. It has the feature of easy interpretation. By applying fitted model to my test data, I observe 49.6% out of sample error.
+```{r}
+tree.fit = train(classe ~., method='rpart', data = my.train.final)
+print(tree.fit$finalModel)
+fancyRpartPlot(tree.fit$finalModel)
+pred = predict(tree.fit, newdata = my.test)
+print(confusionMatrix(pred, my.test$classe))
+```
+
+#### Algorithm 2: Random forrest
+Accuracy of tree model is not very satisfying. In order to improve it, I tried random forrest algorithm. Out of sample error has been greatly reduced to 0.3%.
+```{r}
+rf.fit <- train(classe ~., method="rf", data=my.train.final)
+print(rf.fit, digits=3)
+pred = predict(rf.fit, newdata = my.test)
+print(confusionMatrix(pred, my.test$classe))
+
+```
+
+#### Final choice
+Bacuse of much better prediction precision, I decide to use random forrest as the final algorithm for this activity data.
+
+#### Submit answers 
+Finally I apply fitted algorithm to the 20 test cases provided in the tesing set. All of them are correctly predicted.
+```{r}
+pred = predict(rf.fit, newdata = test)
+pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i], file=filename, quote=FALSE, row.names=FALSE, col.names=FALSE)
+    }
+}
+pml_write_files(pred)
+```
